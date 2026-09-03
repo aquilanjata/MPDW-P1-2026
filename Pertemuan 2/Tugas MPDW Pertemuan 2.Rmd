@@ -1,0 +1,368 @@
+---
+title: "MPDW Praktikum 2"
+author: "Aquila Putra N."
+date: "2026-09-02"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(TTR)
+library(forecast)
+library(lmtest)
+library(orcutt) 
+library(readxl)
+library(HoRM)
+```
+
+# Input Data
+```{r}
+df1 <- read_excel("C:\\Users\\Aquila\\Downloads\\Tugas_Praktikum_Data.xlsx", sheet = "Task 1 - Market Share")
+df2 <- read_excel("C:\\Users\\Aquila\\Downloads\\Tugas_Praktikum_Data.xlsx", sheet = "Task 2 - Sales & Advertising")
+```
+
+```{r}
+head(df1)
+```
+
+```{r}
+head(df2)
+```
+
+# Market Share
+
+## Eksplorasi Data
+```{r}
+plot(df1$Market_Share, df1$Price, pch = 20, col = "blue",
+     main = "Scatter Plot Market Share vs Price",
+     xlab = "Market Share",
+     ylab = "Price")
+cor(df1$Market_Share, df1$Price)
+```
+
+```{r}
+boxplot(df1$Market_Share)
+```
+```{r}
+boxplot(df1$Price)
+```
+## Pemodelan Regresi Linear
+```{r}
+model1 <- lm(Market_Share~Price, df1)
+summary(model1)
+```
+Model regresi = $$\hat{Y}=26.910-24.290X$$
+p-value untuk price < 0.05 membuktikan bahwa Price berpengaruh signifikan terhadap Market Share pada taraf nyata 5%. 94.84% variasi Market Share dapat dijelaskan oleh Price. Uji F menghasilkan p-value < 0.05, sehingga model regresi secara keseluruhan signifikan.
+
+## Uji Asumsi
+
+### Normalitas
+```{r}
+plot(model1, which = 2)
+```
+
+```{r}
+shapiro.test(residuals(model1))
+```
+Sisaan berdistribusi normal pada taraf nyata 5%, karena p-value yang bernilai 0,8437 lebih besar dari 0,05
+
+### Homogenitas
+```{r}
+plot(model1, which = 3)
+```
+
+```{r}
+bptest(model1)
+```
+Ragam sisaan homogen pada taraf nyata 5% karena p-value > 0,05
+
+### Autokorelasi
+```{r}
+plot(residuals(model1),
+     type = "o",
+     xlab = "Waktu",
+     ylab = "Sisaan",
+     main = "Plot Sisaan")
+abline(h = 0, lty = 2)
+```
+
+```{r}
+dwtest(model1)
+```
+karena p-value dibawah 0,05. Berarti tidak ada autokorelasi
+
+## Penanganan Autokorelasi
+
+### Cochrane Orcutt
+```{r}
+modelCO<-cochrane.orcutt(model1)
+modelCO
+```
+Hasil keluaran model setelah dilakukan penanganan adalah sebagai berikut. $$y_i= 26.72209-24.08413 x_t$$ Hasil juga menunjukkan bahwa nilai DW dan p-value meningkat menjadi $1.95804$ dan $0.4151$. Hal tersebut juga didukung dengan nilai *p-value* \> 0.05, artinya belum cukup bukti menyatakan bahwa sisaan terdapat autokorelasi pada taraf nyata 5%. Untuk nilai $ρ̂$ optimum yang digunakan adalah 0.42523214.
+
+```{r}
+rho<- modelCO$rho
+rho
+```
+
+```{r}
+df1$Market_Share
+```
+```{r}
+Market_Share.trans<- df1$Market_Share[-1]-df1$Market_Share[-20]*rho
+Price.trans<- df1$Price[-1]-df1$Price[-20]*rho
+
+modelCOmanual1<- lm(Market_Share.trans~Price.trans)
+summary(modelCOmanual1)
+```
+
+```{r}
+b0bintang <- modelCOmanual1$coefficients[-2]
+b0 <- b0bintang/(1-rho)
+b1 <- modelCOmanual1$coefficients[-1]
+b0
+b1
+```
+
+## Hildrenth-Lu
+```{r}
+y1 <- df1$Market_Share
+x1 <- df1$Price
+
+r <- seq(0, 0.9, by = 0.1)
+tab <- data.frame(
+  rho = r,
+  SSE = sapply(r, function(rr) deviance(hildreth.lu(y1, x1, rr)))
+)
+
+tab          
+rho_hat <- tab$rho[which.min(tab$SSE)]   
+fit_hl  <- hildreth.lu(y1, x1, rho_hat)    
+summary(fit_hl)
+```
+
+```{r}
+hildreth.lu.func<- function(r, model1){
+  x <- model.matrix(model1)[,-1]
+  y <- model.response(model.frame(model1))
+  n <- length(y)
+  t <- 2:n
+  y <- y[t]-r*y[t-1]
+  x <- x[t]-r*x[t-1]
+  
+  return(lm(y~x))
+}
+
+rOpt <- seq(0.2,0.5, by= 0.001)
+tabOpt <- data.frame("rho" = rOpt, "SSE" = sapply(rOpt, function(i){deviance(hildreth.lu.func(i, model1))}))
+head(tabOpt[order(tabOpt$SSE),])
+
+rho_opt <- tabOpt$rho[which.min(tabOpt$SSE)]
+sse_opt <- min(tabOpt$SSE)
+
+plot(tabOpt$SSE ~ tabOpt$rho, type = "l", xlab = "Rho", ylab = "SSE")
+abline(v = rho_opt, lty = 2, col = "red", lwd = 2)
+text(x = rho_opt, y = sse_opt, 
+     labels = paste0("rho=", round(rho_opt, 3)), 
+     pos = 3, cex = 0.8)
+```
+SSE terkecil terdapat pada nilai $ρ=0.425$
+
+```{r}
+modelHL1 <- hildreth.lu.func(rho_opt, model1)
+summary(modelHL1)
+
+cat("y = ", coef(modelHL1)[1]/(1-0.425), "+", coef(modelHL1)[2],"x", sep = "")
+```
+$$y_i=26.72268+-24.08484x_t$$ adalah model yang didapatkan dari Hidrenth-Lu
+
+```{r}
+dwtest(modelHL1)
+```
+dengan p-value > 0,05 belum cukup bukti menyatakan bahwa ada autokorelasi dalam data nilai Market Share dengan metode Hildreth-Lu pada taraf nyata 5%
+
+## Perbandingan
+```{r}
+sseModelawal <- anova(model1)$`Sum Sq`[-1]
+sseModelCO <- anova(modelCOmanual1)$`Sum Sq`[-1]
+sseModelHL <- anova(modelHL1)$`Sum Sq`[-1]
+mseModelawal <- sseModelawal/length(df1$Market_Share)
+mseModelCO <- sseModelCO/length(df1$Market_Share)
+mseModelHL <- sseModelHL/length(df1$Market_Share)
+akurasi <- matrix(c(sseModelawal,sseModelCO,sseModelHL,
+                    mseModelawal,mseModelCO,mseModelHL),nrow=2,ncol=3,byrow = T)
+colnames(akurasi) <- c("Model Awal", "Model Cochrane-Orcutt", "Model Hildreth-Lu")
+row.names(akurasi) <- c("SSE","MSE")
+akurasi
+```
+Model Cochrane-Orcutt dan Hildreth_lu menunjukkan bahwa SSE menurun dari model awal, yang berarti model setelah penanganan lebih baik dari model awal
+
+# Sales & Advertising
+
+## Eksplorasi Data
+```{r}
+plot(df2$Sales, df2$Advertising, pch = 20, col = "blue",
+     main = "Scatter Plot Sales vs Advertising",
+     xlab = "Sales",
+     ylab = "Advertising")
+cor(df2$Sales, df2$Advertising)
+```
+
+```{r}
+boxplot(df2$Sales)
+```
+
+```{r}
+boxplot(df2$Advertising)
+```
+
+## Pemodelan regresi linear
+```{r}
+model2 <- lm(Sales~Advertising, df2)
+summary(model2)
+```
+Model regresi = $$\hat{Y}=5.96513-0.71035X$$
+p-value untuk advertising < 0.05 membuktikan bahwa Advertising berpengaruh signifikan terhadap Sales pada taraf nyata 5%. 95,85% variasi Market Share dapat dijelaskan oleh Price. Uji F menghasilkan p-value < 0.05, sehingga model regresi secara keseluruhan signifikan.
+
+## Uji Asumsi
+
+### Normalitas
+```{r}
+plot(model2, which = 2)
+```
+
+```{r}
+shapiro.test(residuals(model2))
+```
+p-value < 0,05 yang berarti sisaan tidak menyebar normal pada tarf nyata 5%
+
+### Homogenitas
+```{r}
+plot(model2, which = 3)
+```
+
+```{r}
+bptest(model2)
+```
+Karena p-value > 0,05 maka ragam sisaan homogen pada taraf nyata 5%
+
+### Autokorelasi
+```{r}
+plot(residuals(model2),
+     type = "o",
+     xlab = "Waktu",
+     ylab = "Sisaan",
+     main = "Plot Sisaan")
+abline(h = 0, lty = 2)
+```
+
+```{r}
+dwtest(model2)
+```
+karena p-value < 0,05 maka terdapat autokorelasi
+
+## Penanganan 
+
+### Cochrane-Orcutt
+```{r}
+modelCO2 <- cochrane.orcutt(model2)
+modelCO2
+```
+Hasil keluaran model setelah dilakukan penanganan adalah sebagai berikut. $$y_i= 10.252375-0.488489 x_t$$ Hasil juga menunjukkan bahwa nilai DW dan p-value meningkat menjadi $1.93925$ dan $0.378$. Hal tersebut juga didukung dengan nilai *p-value* \> 0.05, artinya belum cukup bukti menyatakan bahwa sisaan terdapat autokorelasi pada taraf nyata 5%. Untuk nilai $ρ̂$ optimum yang digunakan adalah 0.9031234.
+
+```{r}
+rho2 <- modelCO2$rho
+rho2
+```
+
+```{r}
+n2 <- nrow(df2)
+Sales.trans2 <- df2$Sales[-1] - df2$Sales[-n2]*rho2
+Advertising.trans2 <- df2$Advertising[-1] - df2$Advertising[-n2]*rho2
+
+modelCOmanual2 <- lm(Sales.trans2~Advertising.trans2)
+summary(modelCOmanual2)
+```
+
+```{r}
+#Mencari Penduga Koefisien Regresi setelah Transformasi ke Persamaan Awal
+b0bintang2 <- modelCOmanual2$coefficients[1]
+b02 <- b0bintang2/(1-rho2)
+b12 <- modelCOmanual2$coefficients[2]
+b02
+b12
+```
+
+### Hildreth-Lu
+
+```{r}
+y2 <- df2$Sales
+x2 <- df2$Advertising
+
+r2 <- seq(0, 0.9, by = 0.1)
+tab2 <- data.frame(
+  rho = r2,
+  SSE = sapply(r2, function(rr) deviance(hildreth.lu(y2, x2, rr)))
+)
+
+tab2
+rho_hat2 <- tab2$rho[which.min(tab2$SSE)]
+fit_hl2 <- hildreth.lu(y2, x2, rho_hat2)
+summary(fit_hl2)
+```
+
+```{r}
+hildreth.lu.func2 <- function(r, model2){
+  x <- model.matrix(model2)[,-1]
+  y <- model.response(model.frame(model2))
+  n <- length(y)
+  t <- 2:n
+  y <- y[t]-r*y[t-1]
+  x <- x[t]-r*x[t-1]
+
+  return(lm(y~x))
+}
+
+rOpt2 <- seq(max(0, rho_hat2-0.1), min(0.9, rho_hat2+0.1), by = 0.001)
+tabOpt2 <- data.frame("rho" = rOpt2, "SSE" = sapply(rOpt2, function(i){deviance(hildreth.lu.func2(i, model2))}))
+head(tabOpt2[order(tabOpt2$SSE),])
+
+rho_opt2 <- tabOpt2$rho[which.min(tabOpt2$SSE)]
+sse_opt2 <- min(tabOpt2$SSE)
+
+plot(tabOpt2$SSE ~ tabOpt2$rho, type = "l", xlab = "Rho", ylab = "SSE")
+abline(v = rho_opt2, lty = 2, col = "red", lwd = 2)
+text(x = rho_opt2, y = sse_opt2,
+     labels = paste0("rho=", round(rho_opt2, 3)),
+     pos = 3, cex = 0.8)
+```
+
+```{r}
+modelHL2 <- hildreth.lu.func2(rho_opt2, model2)
+summary(modelHL2)
+
+#Transformasi Balik
+cat("y = ", coef(modelHL2)[1]/(1-rho_opt2), "+", coef(modelHL2)[2],"x", sep = "")
+```
+Model Hidreth-Lu = $$y_i=10.13098+0.4935821x_t$$
+
+```{r}
+dwtest(modelHL2)
+```
+p-value > 0,05, artinya belum cukup bukti menyatakan bahwa ada autokorelasi dalam data nilai Sales dengan metode Hildreth-Lu pada taraf nyata 5%
+
+## Perbandingan
+```{r}
+sseModelawal2 <- anova(model2)$`Sum Sq`[-1]
+sseModelCO2 <- anova(modelCOmanual2)$`Sum Sq`[-1]
+sseModelHL2 <- anova(modelHL2)$`Sum Sq`[-1]
+mseModelawal2 <- sseModelawal2/length(df2$Sales)
+mseModelCO2 <- sseModelCO2/length(df2$Sales)
+mseModelHL2 <- sseModelHL2/length(df2$Sales)
+akurasi2 <- matrix(c(sseModelawal2,sseModelCO2,sseModelHL2,
+                    mseModelawal2,mseModelCO2,mseModelHL2),nrow=2,ncol=3,byrow = T)
+colnames(akurasi2) <- c("Model Awal", "Model Cochrane-Orcutt", "Model Hildreth-Lu")
+row.names(akurasi2) <- c("SSE","MSE")
+akurasi2
+```
+Model Cochrane-Orcutt dan Hildreth_lu menunjukkan bahwa SSE menurun dari model awal, yang berarti model setelah penanganan lebih baik dari model awal
