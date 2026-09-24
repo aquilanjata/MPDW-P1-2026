@@ -1,0 +1,355 @@
+---
+title: "MPDW Prak 4"
+author: "Aquila Putra N."
+date: "2026-09-23"
+output: html_document
+---
+
+```{r}
+library(TSA)
+```
+
+# Proses MA(Moving Average) (2)
+
+• Bangkitkan model MA(2) dengan 𝜃1 = 0.4 dan 𝜃2 = 0.6 sebanyak
+300 data (Manual dan dengan arima.sim)
+• Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi
+apakah data tersebut stasioner
+• Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡
+dengan 𝑌𝑡−3
+• Hitung autokorelasi masing masing baik dari data bangkitan maupun
+secara teoritis
+
+MA (2):
+$$Y_t = e_t + \theta_1 e_{t-1} + \theta_2 e_{t-2}, \qquad e_t \sim WN(0,\sigma_e^2)$$
+
+## Pembangkitan Data
+
+### Dengan arima.sim
+```{r}
+set.seed(123)
+y_ma2_sim <- arima.sim(model = list(ma = c(0.4, 0.6)), n = 300)
+```
+
+```{r}
+y_ma2_sim
+```
+
+### Manual
+```{r}
+generate_ma2_manual <- function(n, theta1, theta2) {
+  burn <- 2
+  e <- rnorm(n + burn)
+  y <- numeric(n)
+  for (t in 1:n) {
+    tt <- t + burn
+    y[t] <- e[tt] + theta1 * e[tt - 1] + theta2 * e[tt - 2]
+  }
+  y
+}
+```
+
+```{r}
+set.seed(123)
+y_ma2_manual <- generate_ma2_manual(300, 0.4, 0.6)
+y_ma2_manual
+```
+
+## Plots dan Kestasioneran
+
+**Sifat kestasioneran:** proses MA orde berhingga **selalu stasioner** untuk sembarang nilai $\theta_1, \theta_2$, karena variansi dan kovariansinya tidak bergantung pada $t$ (hanya bergantung pada selisih lag).
+
+### Time Series
+```{r}
+par(mfrow = c(1, 2))
+plot.ts(y_ma2_manual, main = "MA(2) - Manual", ylab = "Yt")
+plot.ts(y_ma2_sim, main = "MA(2) - arima.sim", ylab = "Yt")
+par(mfrow = c(1, 1))
+```
+(Karena sama aja jadinya saya bakal pakai yang y_ma2_sim aja untuk seterusnya)
+
+### ACF
+```{r}
+acf(y_ma2_sim, main = "ACF MA(2)")
+```
+
+
+
+### PACF
+```{r}
+pacf(y_ma2_sim, main = "PACF MA(2)")
+```
+
+### EACF
+```{r}
+eacf(y_ma2_sim)
+```
+
+### Identifikasi Kestasioneran
+Dari plot time series terlihat data berfluktuasi di sekitar rata-rata konstan tanpa tren atau perubahan variansi yang sistematis, dan plot ACF terputus setelah lag 2 sesuai teori — ini mengonfirmasi data **stasioner**, sebagaimana memang seharusnya untuk proses MA.
+
+## Scatterplot Yt terhadap Lag
+```{r}
+scatter_lag <- function(y, lag, judul) {
+  n <- length(y)
+  plot(y[1:(n - lag)], y[(1 + lag):n],
+       xlab = bquote(Y[t - .(lag)]), ylab = expression(Y[t]),
+       main = judul, pch = 19, col = "steelblue")
+}
+
+par(mfrow = c(1, 3))
+scatter_lag(y_ma2_sim, 1, "Yt vs Yt-1")
+scatter_lag(y_ma2_sim, 2, "Yt vs Yt-2")
+scatter_lag(y_ma2_sim, 3, "Yt vs Yt-3")
+par(mfrow = c(1, 1))
+```
+
+## Autokorelasi
+
+### Empiris
+```{r}
+acf_empiris <- acf(y_ma2_sim, plot = FALSE)$acf[2:4]
+acf_empiris
+```
+
+### Teoritis
+
+$$
+\rho_k =
+\begin{cases}
+1, & k = 0\\[4pt]
+\dfrac{\theta_1+\theta_1\theta_2}{1+\theta_1^2+\theta_2^2}, & k = 1\\[8pt]
+\dfrac{\theta_2}{1+\theta_1^2+\theta_2^2}, & k = 2\\[4pt]
+0, & k > 2
+\end{cases}
+$$
+
+```{r}
+theta1 <- 0.4
+theta2 <- 0.6
+
+denom <- 1 + theta1^2 + theta2^2
+rho1_teori <- (theta1 + theta1 * theta2) / denom
+rho2_teori <- theta2 / denom
+rho3_teori <- 0
+acf_teori <- c(rho1_teori, rho2_teori, rho3_teori)
+
+acf_teori
+```
+
+# Proses AR(AutoRegressive) (2)
+
+• Bangkitkan model AR(2) dengan 𝜙1 = 0.5 dan 𝜙2 = 0.2 sebanyak
+300 data (Manual dan dengan arima.sim)
+• Buat plot time series, plot ACF, plot PACF dan plot EACF. Idenifikasi
+apakah data tersebut stasioner
+• Buat scatterplot antara 𝑌𝑡 dengan 𝑌𝑡−1, 𝑌𝑡 dengan 𝑌𝑡−2 serta 𝑌𝑡
+dengan 𝑌𝑡−3
+• Hitung autokorelasi masing masing baik dari data bangkitan maupun
+secara teoritis
+
+AR (2):
+$$Y_t = \phi_1 Y_{t-1} + \phi_2 Y_{t-2} + e_t, \qquad e_t \sim WN(0,\sigma_e^2)$$
+## Pembangkitan data
+
+### Dengan arima.sim
+```{r}
+set.seed(123)
+y_ar2_sim <- arima.sim(model = list(ar = c(0.5, 0.2)), n = 300)
+```
+
+```{r}
+y_ar2_sim
+```
+
+### Manual
+```{r}
+generate_ar2_manual <- function(n, phi1, phi2) {
+  burn <- 100
+  total <- n + burn
+  e <- rnorm(total)
+  y <- numeric(total)
+  y[1] <- e[1]
+  y[2] <- e[2]
+  for (t in 3:total) {
+    y[t] <- phi1 * y[t - 1] + phi2 * y[t - 2] + e[t]
+  }
+  y[(burn + 1):total]
+}
+
+set.seed(123)
+y_ar2_manual <- generate_ar2_manual(300, 0.5, 0.2)
+```
+
+```{r}
+y_ar2_manual
+```
+
+## Plots dan Kestasioneran
+
+**Syarat kestasioneran** (akar karakteristik berada di luar lingkaran satuan):
+
+$$\phi_1 + \phi_2 < 1, \qquad \phi_2 - \phi_1 < 1, \qquad -1 < \phi_2 < 1$$
+
+Cek numerik: $0.5+0.2=0.7<1$; $0.2-0.5=-0.3<1$; $-1<0.2<1$ — ketiga syarat terpenuhi sehingga proses **stasioner**.
+
+### Time Series
+```{r}
+par(mfrow = c(1, 2))
+plot.ts(y_ar2_manual, main = "AR(2) - Manual", ylab = "Yt")
+plot.ts(y_ar2_sim, main = "AR(2) - arima.sim", ylab = "Yt")
+par(mfrow = c(1, 1))
+```
+karena data overall sama saya y_ar2_sim
+
+### ACF
+```{r}
+acf(y_ar2_sim, main = "ACF AR(2)")
+```
+
+### PACF
+```{r}
+pacf(y_ar2_sim, main = "PACF AR(2)")
+```
+
+### EACF
+```{r}
+eacf(y_ar2_sim)
+```
+
+### Identifikasi Kestasioneran
+Time series berosilasi di sekitar rata-rata tetap, ACF meluruh perlahan menuju nol dan PACF terputus setelah lag 2 — sesuai teori dan mengonfirmasi data **stasioner**.
+
+## Scatterplot Yt terhadap lag
+```{r}
+par(mfrow = c(1, 3))
+scatter_lag(y_ar2_sim, 1, "Yt vs Yt-1")
+scatter_lag(y_ar2_sim, 2, "Yt vs Yt-2")
+scatter_lag(y_ar2_sim, 3, "Yt vs Yt-3")
+par(mfrow = c(1, 1))
+```
+
+## Autokorelasi
+
+### Empiris
+```{r}
+acf_empiris_ar <- acf(y_ar2_sim, plot = FALSE)$acf[2:4]
+acf_empiris_ar
+```
+
+### Teoritis
+persamaan Yule-Walker:
+$$\rho_1 = \frac{\phi_1}{1-\phi_2}, \qquad \rho_k = \phi_1 \rho_{k-1} + \phi_2 \rho_{k-2}\ \ (k \ge 2), \qquad \rho_0 = 1$$
+```{r}
+phi1 <- 0.5
+phi2 <- 0.2
+
+rho <- numeric(3)
+rho[1] <- phi1 / (1 - phi2)
+rho[2] <- phi1 * rho[1] + phi2 * 1
+rho[3] <- phi1 * rho[2] + phi2 * rho[1]
+
+rho
+```
+
+# Proses ARMA(AutoRegressive Moving Average) (2,2)
+
+ARMA(2,2):
+$$Y_t = \phi_1 Y_{t-1} + \phi_2 Y_{t-2} + e_t + \theta_1 e_{t-1} + \theta_2 e_{t-2}$$
+
+## Pembangkitan Data
+
+### Dengan arima.sim
+```{r}
+set.seed(123)
+y_arma22_sim <- arima.sim(model = list(ar = c(0.5, 0.2), ma = c(0.4, 0.6)), n = 300)
+```
+
+```{r}
+y_arma22_sim
+```
+
+### Manual 
+```{r}
+generate_arma22_manual <- function(n, phi1, phi2, theta1, theta2) {
+  burn <- 100
+  total <- n + burn
+  e <- rnorm(total)
+  y <- numeric(total)
+  y[1] <- e[1]
+  y[2] <- e[2] + theta1 * e[1]
+  for (t in 3:total) {
+    y[t] <- phi1 * y[t - 1] + phi2 * y[t - 2] +
+      e[t] + theta1 * e[t - 1] + theta2 * e[t - 2]
+  }
+  y[(burn + 1):total]
+}
+
+set.seed(123)
+y_arma22_manual <- generate_arma22_manual(300, 0.5, 0.2, 0.4, 0.6)
+```
+
+```{r}
+y_arma22_manual
+```
+
+## Plots dan Kestasioneran
+
+ARMA hanya ditentukan oleh bagian AR-nya (komponen MA selalu stasioner). Karena $\phi_1,\phi_2$ sama dengan kasus AR(2) di atas dan sudah memenuhi syarat $\phi_1+\phi_2<1,\ \phi_2-\phi_1<1,\ -1<\phi_2<1$, maka proses ini **stasioner**.
+
+### Time Series
+```{r}
+par(mfrow = c(1, 2))
+plot.ts(y_arma22_manual, main = "ARMA(2,2) - Manual", ylab = "Yt")
+plot.ts(y_arma22_sim, main = "ARMA(2,2) - arima.sim", ylab = "Yt")
+par(mfrow = c(1, 1))
+```
+Karena kedua data hampir sama saya makai y_arma22_sim untuk selanjutnya
+
+### ACF
+```{r}
+acf(y_arma22_sim, main = "ACF ARMA(2,2)")
+```
+
+### PACF
+```{r}
+pacf(y_arma22_sim, main = "PACF ARMA(2,2)")
+```
+
+### EACF
+```{r}
+eacf(y_arma22_sim)
+```
+
+### Identifikasi Kestasioneran
+Data berfluktuasi secara konstan dan dan tidak ada indikasi memiliki tren, serta ACF dan PACF meluruh secara bertahap. Syarat stasioner juga terpenuh karena $0.5 + 0.2 < 1, 0.5-0.2 < 1, dan -1 < 0.2 < 1$ yang mengindikasikan bahwa data **stasioner**
+
+## Scatterplot terhadap lag
+```{r}
+par(mfrow = c(1, 3))
+scatter_lag(y_arma22_sim, 1, "Yt vs Yt-1")
+scatter_lag(y_arma22_sim, 2, "Yt vs Yt-2")
+scatter_lag(y_arma22_sim, 3, "Yt vs Yt-3")
+par(mfrow = c(1, 1))
+```
+
+## Autokorelasi
+
+### Empiris
+```{r}
+acf_empiris_arma <- acf(y_arma22_sim, plot = FALSE)$acf[2:4]
+acf_empiris_arma
+```
+
+### Teoritis
+untuk lag $k>q=2$, ACF ARMA(2,2) mengikuti persamaan selisih yang sama seperti AR(2):
+
+$$\rho_k = \phi_1 \rho_{k-1} + \phi_2 \rho_{k-2}, \qquad k>2$$
+
+sedangkan $\rho_0,\rho_1,\rho_2$ dipengaruhi juga oleh komponen MA sehingga tidak memiliki bentuk tertutup sesederhana AR/MA murni — dalam praktik nilai-nilai ini dihitung memakai fungsi bawaan R, `ARMAacf()`, yang menghitungnya secara eksak melalui representasi $MA(\infty)$.
+
+```{r}
+acf_teori_arma <- ARMAacf(ar = c(0.5, 0.2), ma = c(0.4, 0.6), lag.max = 3)[2:4]
+acf_teori_arma
+```
+
